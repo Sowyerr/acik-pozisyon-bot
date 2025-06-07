@@ -7,12 +7,13 @@ from datetime import datetime, timedelta
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 PHANTOM_ADDRESS = os.getenv("PHANTOM_ADDR")
-GROUP_CHAT_ID = os.getenv("CHAT_ID")  # örnek: -1002101242820
+GROUP_CHAT_ID = os.getenv("CHAT_ID")  # -100xxxxxxxxxx formatında
 
 WAITING_FOR_WALLET = 1
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
+# /start komutu
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     message = (
@@ -23,6 +24,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(message)
     return WAITING_FOR_WALLET
 
+# Kullanıcının gönderdiği cüzdan adresine göre son işlemleri kontrol et
 async def check_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
     sender_address = update.message.text.strip()
     url = f"https://public-api.solscan.io/account/transactions?account={PHANTOM_ADDRESS}&limit=10"
@@ -59,11 +61,11 @@ async def check_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return ConversationHandler.END
 
     except Exception as e:
-        logging.error(f"Hata: {e}")
+        logging.error(f"API hatası: {e}")
         await update.message.reply_text("⚠️ İşlem sırasında bir hata oluştu. Daha sonra tekrar deneyin.")
         return ConversationHandler.END
 
-# Chat ID alma komutu
+# Chat ID'yi gösteren komut
 async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Bu grubun Chat ID'si: {update.effective_chat.id}")
 
