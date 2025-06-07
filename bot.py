@@ -1,16 +1,19 @@
 from telegram import Update, ReplyKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 import logging
+import requests
+import os
+from datetime import datetime, timedelta
 
-# Token ve bilgiler
-BOT_TOKEN = "7870474639:AAGpDbXF31Rf5BYzaRbMOBCfaDmjWXHAyDs"
-PREMIUM_LINK = "https://t.me/+QWbBymtP3ns3M2I0"
-PHANTOM_ADDRESS = "BKDQrhZAfXt6jSUv2M6JSRQam2486KXwa5H12HZfSeEe"
+# .env üzerinden token ve sabit değerleri al
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+PREMIUM_LINK = os.getenv("PREMIUM_LINK")
+PHANTOM_ADDRESS = os.getenv("PHANTOM_ADDR")
 
-# Durum sabiti
-WAITING_FOR_CONFIRM = 1
+# Sabitler
+WAITING_FOR_WALLET = 1
 
-# Log ayarları
+# Log ayarı
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
@@ -19,26 +22,54 @@ logging.basicConfig(
 # /start komutu
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    welcome_message = (
+    message = (
         f"👋 Hoş geldin {user.first_name}!\n\n"
-        f"📈 Açık Pozisyon'a katılmak için 0.5 SOL gönder:\n"
-        f"💳 `{PHANTOM_ADDRESS}`\n\n"
-        f"✅ Gönderim yaptıysan aşağıdaki butona tıkla."
+        f"Açık Pozisyon Premium'a katılmak için 0.5 SOL ödeme kontrolü yapacağız.\n"
+        f"Lütfen ödemenin gönderildiği cüzdan adresini (SENDER) buraya yaz."
     )
-    reply_markup = ReplyKeyboardMarkup([
-        ["✅ Ödeme Yaptım"]
-    ], one_time_keyboard=True, resize_keyboard=True)
+    await update.message.reply_text(message)
+    return WAITING_FOR_WALLET
 
-    await update.message.reply_text(welcome_message, reply_markup=reply_markup, parse_mode="Markdown")
-    return WAITING_FOR_CONFIRM
+# Kullanıcıdan cüzdan adresi al ve kontrol et
+async def check_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    sender_address = update.message.text.strip()
+    url = f"https://public-api.solscan.io/account/transactions?account={PHANTOM_ADDRESS}&limit=10"
 
-# Ödeme onayı
-async def confirm_payment(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        f"✅ Ödemen onaylandıysa aşağıdaki linkten premium gruba katılabilirsin:\n\n"
-        f"{PREMIUM_LINK}"
-    )
-    return ConversationHandler.END
+    headers = {
+        "accept": "application/json",
+        "User-Agent": "Mozilla/5.0"
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        data = response.json()
+        now = datetime.utcnow()
+
+        for tx in data:
+            if not tx.get("parsedInstruction"):
+                continue
+
+            for instruction in tx["parsedInstruction"]:
+                source = instruction.get("source")
+                lamports = int(instruction.get("lamport", 0))
+                time_str = tx.get("blockTime")
+                if not (source and lamports and time_str):
+                    continue
+
+                dt = datetime.utcfromtimestamp(time_str)
+                if source == sender_address and lamports >= 500_000_000 and now - dt < timedelta(minutes=15):
+                    await update.message.reply_text(
+                        f"✅ Ödeme alındı! Premium gruba katılmak için link:\n{PREMIUM_LINK}"
+                    )
+                    return ConversationHandler.END
+
+        await update.message.reply_text("❌ Henüz bu adresten 0.5 SOL gönderimi görünmüyor. Lütfen kontrol edip tekrar deneyin.")
+        return ConversationHandler.END
+
+    except Exception as e:
+        logging.error(f"Hata: {e}")
+        await update.message.reply_text("⚠️ İşlem sırasında bir hata oluştu. Daha sonra tekrar deneyin.")
+        return ConversationHandler.END
 
 # Botu başlat
 if __name__ == '__main__':
@@ -47,9 +78,7 @@ if __name__ == '__main__':
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler('start', start)],
         states={
-            WAITING_FOR_CONFIRM: [
-                MessageHandler(filters.Regex("^✅ Ödeme Yaptım$"), confirm_payment)
-            ]
+            WAITING_FOR_WALLET: [MessageHandler(filters.TEXT & ~filters.COMMAND, check_transaction)]
         },
         fallbacks=[]
     )
