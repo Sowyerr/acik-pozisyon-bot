@@ -63,6 +63,10 @@ async def check_transaction(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("⚠️ İşlem sırasında bir hata oluştu. Daha sonra tekrar deneyin.")
         return ConversationHandler.END
 
+# Chat ID alma komutu
+async def get_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(f"✅ Bu grubun Chat ID'si: {update.effective_chat.id}")
+
 if __name__ == '__main__':
     app = ApplicationBuilder().token(BOT_TOKEN).build()
 
@@ -73,4 +77,5 @@ if __name__ == '__main__':
     )
 
     app.add_handler(conv_handler)
+    app.add_handler(CommandHandler('chatid', get_chat_id))
     app.run_polling()
